@@ -45,6 +45,7 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.exceptions.COSVisitorException;
 import org.apache.pdfbox.exceptions.SignatureException;
+import org.apache.pdfbox.io.RandomAccessBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface;
@@ -86,7 +87,8 @@ class PdfBoxSignatureService implements PDFSignatureService {
 
 			toSignFile = DSSPDFUtils.getFileFromPdfData(toSignDocument);
 
-			pdDocument = PDDocument.load(toSignFile);
+//			pdDocument = PDDocument.load(toSignFile);
+            pdDocument = PDDocument.loadNonSeq(toSignFile, new RandomAccessBuffer());
 			PDSignature pdSignature = createSignatureDictionary(parameters);
 
 			signedFile = File.createTempFile("sd-dss-", "-signed.pdf");
@@ -116,7 +118,8 @@ class PdfBoxSignatureService implements PDFSignatureService {
 
 			toSignFile = DSSPDFUtils.getFileFromPdfData(pdfData);
 
-			pdDocument = PDDocument.load(toSignFile);
+//			pdDocument = PDDocument.load(toSignFile);
+            pdDocument = PDDocument.loadNonSeq(toSignFile, new RandomAccessBuffer());
 			final PDSignature pdSignature = createSignatureDictionary(parameters);
 
 			signedFile = File.createTempFile("sd-dss-", "-signed.pdf");
@@ -278,7 +281,8 @@ class PdfBoxSignatureService implements PDFSignatureService {
 		try {
 
 			bais = new ByteArrayInputStream(originalBytes);
-			doc = PDDocument.load(bais);
+//			doc = PDDocument.load(bais);
+            doc = PDDocument.loadNonSeq(bais, new RandomAccessBuffer());
 
 			List<PDSignature> pdSignatures = doc.getSignatureDictionaries();
 			if (CollectionUtils.isNotEmpty(pdSignatures)) {
@@ -360,7 +364,8 @@ class PdfBoxSignatureService implements PDFSignatureService {
 		PdfDssDict dssDictionary = null;
 		try {
 			bais = new ByteArrayInputStream(originalBytes);
-			doc = PDDocument.load(bais);
+//			doc = PDDocument.load(bais);
+            doc = PDDocument.loadNonSeq(bais, new RandomAccessBuffer());
 			List<PDSignature> pdSignatures = doc.getSignatureDictionaries();
 			if (CollectionUtils.isNotEmpty(pdSignatures)) {
 				PdfDict catalog = new PdfBoxDict(doc.getDocumentCatalog().getCOSDictionary(), doc);
@@ -391,7 +396,8 @@ class PdfBoxSignatureService implements PDFSignatureService {
 
 			File toSignFile = DSSPDFUtils.getFileFromPdfData(inputStream);
 
-			pdDocument = PDDocument.load(toSignFile);
+//			pdDocument = PDDocument.load(toSignFile);
+            pdDocument = PDDocument.loadNonSeq(toSignFile, new RandomAccessBuffer());
 
 			File signedFile = File.createTempFile("sd-dss-", "-signed.pdf");
 
