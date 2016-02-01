@@ -81,8 +81,9 @@ public final class DSSPDFUtils {
 			IOUtils.copy(fileInputStream, fileOutputStream);
 			return fileOutputStream;
 		} catch (IOException e) {
-			IOUtils.closeQuietly(fileInputStream);
 			throw new DSSException(e);
+		} finally {
+			IOUtils.closeQuietly(fileInputStream);
 		}
 	}
 
