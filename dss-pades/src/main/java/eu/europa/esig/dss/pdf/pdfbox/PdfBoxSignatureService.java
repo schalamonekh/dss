@@ -35,7 +35,6 @@ import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
@@ -45,6 +44,7 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.exceptions.COSVisitorException;
 import org.apache.pdfbox.exceptions.SignatureException;
+import org.apache.pdfbox.io.RandomAccessFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature;
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.SignatureInterface;
@@ -53,7 +53,6 @@ import org.apache.pdfbox.pdmodel.interactive.digitalsignature.visible.PDVisibleS
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.visible.PDVisibleSignDesigner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import eu.europa.esig.dss.DSSDocument;
 import eu.europa.esig.dss.DSSException;
 import eu.europa.esig.dss.DSSUtils;
@@ -80,25 +79,34 @@ class PdfBoxSignatureService implements PDFSignatureService {
 
 		final byte[] signatureValue = DSSUtils.EMPTY_BYTE_ARRAY;
 		File toSignFile = null;
-		File signedFile = null;
+        File signedFile = null;
 		PDDocument pdDocument = null;
+		FileOutputStream fileOutputStream = null;
+		File scratchFile = null;
+		RandomAccessFile randomAccessFile = null;
 		try {
 
 			toSignFile = DSSPDFUtils.getFileFromPdfData(toSignDocument);
 
-			pdDocument = PDDocument.load(toSignFile);
+			scratchFile = File.createTempFile("sd-dss-", "-scratch");
+			randomAccessFile = new RandomAccessFile(scratchFile, "rw");
+			
+			pdDocument = PDDocument.load(toSignFile, randomAccessFile);
 			PDSignature pdSignature = createSignatureDictionary(parameters);
 
 			signedFile = File.createTempFile("sd-dss-", "-signed.pdf");
-			final FileOutputStream fileOutputStream = DSSPDFUtils.getFileOutputStream(toSignFile, signedFile);
+			fileOutputStream = DSSPDFUtils.getFileOutputStream(toSignFile, signedFile);
 
 			final byte[] digestValue = signDocumentAndReturnDigest(parameters, signatureValue, signedFile, fileOutputStream, pdDocument, pdSignature, digestAlgorithm);
 			return digestValue;
 		} catch (IOException e) {
 			throw new DSSException(e);
 		} finally {
+            IOUtils.closeQuietly(fileOutputStream);
 			DSSUtils.delete(toSignFile);
-			DSSUtils.delete(signedFile);
+            DSSUtils.delete(signedFile);
+            IOUtils.closeQuietly(randomAccessFile);
+            DSSUtils.delete(scratchFile);
 			IOUtils.closeQuietly(pdDocument);
 		}
 	}
@@ -109,18 +117,24 @@ class PdfBoxSignatureService implements PDFSignatureService {
 
 		File toSignFile = null;
 		File signedFile = null;
-		FileInputStream fileInputStream = null;
+        FileInputStream fileInputStream = null;
+        FileOutputStream fileOutputStream = null;
 		FileInputStream finalFileInputStream = null;
 		PDDocument pdDocument = null;
+		File scratchFile = null;
+		RandomAccessFile randomAccessFile = null;
 		try {
 
 			toSignFile = DSSPDFUtils.getFileFromPdfData(pdfData);
 
-			pdDocument = PDDocument.load(toSignFile);
+			scratchFile = File.createTempFile("sd-dss-", "-scratch");
+			randomAccessFile = new RandomAccessFile(scratchFile, "rw");
+			
+            pdDocument = PDDocument.load(toSignFile, randomAccessFile);
 			final PDSignature pdSignature = createSignatureDictionary(parameters);
 
 			signedFile = File.createTempFile("sd-dss-", "-signed.pdf");
-			final FileOutputStream fileOutputStream = DSSPDFUtils.getFileOutputStream(toSignFile, signedFile);
+			fileOutputStream = DSSPDFUtils.getFileOutputStream(toSignFile, signedFile);
 
 			signDocumentAndReturnDigest(parameters, signatureValue, signedFile, fileOutputStream, pdDocument, pdSignature, digestAlgorithm);
 
@@ -129,10 +143,13 @@ class PdfBoxSignatureService implements PDFSignatureService {
 		} catch (IOException e) {
 			throw new DSSException(e);
 		} finally {
-			IOUtils.closeQuietly(fileInputStream);
+            IOUtils.closeQuietly(fileInputStream);
+            IOUtils.closeQuietly(fileOutputStream);
 			IOUtils.closeQuietly(finalFileInputStream);
 			DSSUtils.delete(toSignFile);
-			DSSUtils.delete(signedFile);
+            DSSUtils.delete(signedFile);
+            IOUtils.closeQuietly(randomAccessFile);
+            DSSUtils.delete(scratchFile);
 			IOUtils.closeQuietly(pdDocument);
 		}
 	}
@@ -171,7 +188,6 @@ class PdfBoxSignatureService implements PDFSignatureService {
 			if (logger.isDebugEnabled()) {
 				logger.debug("Digest to be signed: " + Hex.encodeHexString(digestValue));
 			}
-			fileOutputStream.close();
 			return digestValue;
 		} catch (IOException e) {
 			throw new DSSException(e);
@@ -275,10 +291,15 @@ class PdfBoxSignatureService implements PDFSignatureService {
 		List<PdfSignatureOrDocTimestampInfo> signatures = new ArrayList<PdfSignatureOrDocTimestampInfo>();
 		ByteArrayInputStream bais = null;
 		PDDocument doc = null;
+		File scratchFile = null;
+		RandomAccessFile randomAccessFile = null;
 		try {
 
 			bais = new ByteArrayInputStream(originalBytes);
-			doc = PDDocument.load(bais);
+			
+            scratchFile = File.createTempFile("sd-dss-", "-scratch");
+            randomAccessFile = new RandomAccessFile(scratchFile, "rw");
+            doc = PDDocument.load(bais, randomAccessFile);
 
 			List<PDSignature> pdSignatures = doc.getSignatureDictionaries();
 			if (CollectionUtils.isNotEmpty(pdSignatures)) {
@@ -333,6 +354,8 @@ class PdfBoxSignatureService implements PDFSignatureService {
 		} finally {
 			IOUtils.closeQuietly(bais);
 			IOUtils.closeQuietly(doc);
+            IOUtils.closeQuietly(randomAccessFile);
+            DSSUtils.delete(scratchFile);
 		}
 
 		return signatures;
@@ -358,9 +381,15 @@ class PdfBoxSignatureService implements PDFSignatureService {
 		ByteArrayInputStream bais = null;
 		PDDocument doc = null;
 		PdfDssDict dssDictionary = null;
+	    File scratchFile = null;
+	    RandomAccessFile randomAccessFile = null;
+
 		try {
 			bais = new ByteArrayInputStream(originalBytes);
-			doc = PDDocument.load(bais);
+			
+            scratchFile = File.createTempFile("sd-dss-", "-scratch");
+            randomAccessFile = new RandomAccessFile(scratchFile, "rw");
+			doc = PDDocument.load(bais, randomAccessFile);
 			List<PDSignature> pdSignatures = doc.getSignatureDictionaries();
 			if (CollectionUtils.isNotEmpty(pdSignatures)) {
 				PdfDict catalog = new PdfBoxDict(doc.getDocumentCatalog().getCOSDictionary(), doc);
@@ -371,8 +400,10 @@ class PdfBoxSignatureService implements PDFSignatureService {
 		} finally {
 			IOUtils.closeQuietly(bais);
 			IOUtils.closeQuietly(doc);
+            IOUtils.closeQuietly(randomAccessFile);
+            DSSUtils.delete(scratchFile);
 		}
-
+		
 		return dssDictionary != null;
 	}
 
@@ -385,17 +416,23 @@ class PdfBoxSignatureService implements PDFSignatureService {
 
 	@Override
 	public void addDssDictionary(InputStream inputStream, OutputStream outpuStream, ModelPdfDict dssDictionary) {
-		FileInputStream fis = null;
+        FileInputStream fis = null;
+        FileOutputStream fileOutputStream = null;
 		PDDocument pdDocument = null;
+		File toSignFile = null;
+		File signedFile = null;
+        File scratchFile = null;
+        RandomAccessFile randomAccessFile = null;
 		try {
+            toSignFile = DSSPDFUtils.getFileFromPdfData(inputStream);
 
-			File toSignFile = DSSPDFUtils.getFileFromPdfData(inputStream);
+            scratchFile = File.createTempFile("sd-dss-", "-scratch");
+            randomAccessFile = new RandomAccessFile(scratchFile, "rw");
+			pdDocument = PDDocument.load(toSignFile, randomAccessFile);
 
-			pdDocument = PDDocument.load(toSignFile);
+            signedFile = File.createTempFile("sd-dss-", "-signed.pdf");
 
-			File signedFile = File.createTempFile("sd-dss-", "-signed.pdf");
-
-			final FileOutputStream fileOutputStream = DSSPDFUtils.getFileOutputStream(toSignFile, signedFile);
+			fileOutputStream = DSSPDFUtils.getFileOutputStream(toSignFile, signedFile);
 
 			if (dssDictionary !=null){
 				final COSDictionary cosDictionary = pdDocument.getDocumentCatalog().getCOSDictionary();
@@ -415,7 +452,12 @@ class PdfBoxSignatureService implements PDFSignatureService {
 			throw new DSSException(e);
 		} finally {
 			IOUtils.closeQuietly(pdDocument);
-			IOUtils.closeQuietly(fis);
+            IOUtils.closeQuietly(fis);
+            IOUtils.closeQuietly(fileOutputStream);
+            DSSUtils.delete(toSignFile);
+            DSSUtils.delete(signedFile);
+            IOUtils.closeQuietly(randomAccessFile);
+            DSSUtils.delete(scratchFile);
 		}
 	}
 

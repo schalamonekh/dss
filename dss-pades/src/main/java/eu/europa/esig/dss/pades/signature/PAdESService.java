@@ -22,7 +22,6 @@ package eu.europa.esig.dss.pades.signature;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-
 import org.apache.commons.io.IOUtils;
 import org.bouncycastle.cms.CMSProcessableByteArray;
 import org.bouncycastle.cms.CMSSignedData;
@@ -30,7 +29,6 @@ import org.bouncycastle.cms.CMSSignedDataGenerator;
 import org.bouncycastle.cms.SignerInfoGeneratorBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import eu.europa.esig.dss.DSSDocument;
 import eu.europa.esig.dss.DSSException;
 import eu.europa.esig.dss.DSSUtils;
@@ -97,8 +95,13 @@ public class PAdESService extends AbstractSignatureService<PAdESSignatureParamet
 
 		final PDFSignatureService pdfSignatureService = PdfObjFactory.getInstance().newPAdESSignatureService();
 		final InputStream inputStream = toSignDocument.openStream();
-		final byte[] messageDigest = pdfSignatureService.digest(inputStream, parameters, parameters.getDigestAlgorithm());
-		IOUtils.closeQuietly(inputStream);
+		
+		byte[] messageDigest;
+		try {
+		    messageDigest = pdfSignatureService.digest(inputStream, parameters, parameters.getDigestAlgorithm());
+		} finally {
+		    IOUtils.closeQuietly(inputStream);
+		}
 
 		SignerInfoGeneratorBuilder signerInfoGeneratorBuilder = padesCMSSignedDataBuilder.getSignerInfoGeneratorBuilder(parameters, messageDigest);
 
@@ -122,8 +125,12 @@ public class PAdESService extends AbstractSignatureService<PAdESSignatureParamet
 
 		final PDFSignatureService pdfSignatureService = PdfObjFactory.getInstance().newPAdESSignatureService();
 		InputStream inputStream = toSignDocument.openStream();
-		final byte[] messageDigest = pdfSignatureService.digest(inputStream, parameters, parameters.getDigestAlgorithm());
-		IOUtils.closeQuietly(inputStream);
+		final byte[] messageDigest;
+		try {
+            messageDigest = pdfSignatureService.digest(inputStream, parameters, parameters.getDigestAlgorithm());
+		} finally {
+		    IOUtils.closeQuietly(inputStream);
+		}
 
 		final SignerInfoGeneratorBuilder signerInfoGeneratorBuilder = padesCMSSignedDataBuilder.getSignerInfoGeneratorBuilder(parameters, messageDigest);
 
@@ -138,23 +145,27 @@ public class PAdESService extends AbstractSignatureService<PAdESSignatureParamet
 			CAdESLevelBaselineT cadesLevelBaselineT = new CAdESLevelBaselineT(tspSource, false);
 			data = cadesLevelBaselineT.extendCMSSignatures(data, parameters);
 		}
+		
+        final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        final byte[] encodedData = CMSUtils.getEncoded(data);
+        inputStream = toSignDocument.openStream();
+        try {
+            pdfSignatureService.sign(inputStream, encodedData, byteArrayOutputStream, parameters, parameters.getDigestAlgorithm());
+        } finally {
+            IOUtils.closeQuietly(inputStream);
+        }
+        
+        DSSDocument signature = new InMemoryDocument(byteArrayOutputStream.toByteArray());
+        signature.setMimeType(MimeType.PDF);
 
-		final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-		final byte[] encodedData = CMSUtils.getEncoded(data);
-		inputStream = toSignDocument.openStream();
-		pdfSignatureService.sign(inputStream, encodedData, byteArrayOutputStream, parameters, parameters.getDigestAlgorithm());
-		IOUtils.closeQuietly(inputStream);
-		DSSDocument signature = new InMemoryDocument(byteArrayOutputStream.toByteArray());
-		signature.setMimeType(MimeType.PDF);
+        final SignatureExtension<PAdESSignatureParameters> extension = getExtensionProfile(signatureLevel);
+        if ((signatureLevel != SignatureLevel.PAdES_BASELINE_B) && (signatureLevel != SignatureLevel.PAdES_BASELINE_T) && (extension != null)) {
+            signature = extension.extendSignatures(signature, parameters);
+        }
 
-		final SignatureExtension<PAdESSignatureParameters> extension = getExtensionProfile(signatureLevel);
-		if ((signatureLevel != SignatureLevel.PAdES_BASELINE_B) && (signatureLevel != SignatureLevel.PAdES_BASELINE_T) && (extension != null)) {
-			signature = extension.extendSignatures(signature, parameters);
-		}
-
-		parameters.reinitDeterministicId();
-		signature.setName(DSSUtils.getFinalFileName(toSignDocument, SigningOperation.SIGN, parameters.getSignatureLevel()));
-		return signature;
+        parameters.reinitDeterministicId();
+        signature.setName(DSSUtils.getFinalFileName(toSignDocument, SigningOperation.SIGN, parameters.getSignatureLevel()));
+        return signature;
 	}
 
 	@Override
